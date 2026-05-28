@@ -1,0 +1,343 @@
+// Lara Creator — Prisma schema (Supabase Postgres).
+// String fields representing enums map to the constants in src/lib/constants.ts.
+// Arrays and JSON columns are stored as JSON-stringified text (helpers in src/lib/json.ts).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─── User (single owner) ──────────────────────────────────────────────────
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String?
+  passwordHash String?  @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+// ─── Sources (reserved for future user-defined sources) ───────────────────
+model Source {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  type      String // youtube | reddit | rss | medium | x | blog | news | producthunt
+  name      String
+  url       String?
+  enabled   Boolean   @default(true)
+  config    String    @default("{}")
+  lastRunAt DateTime? @map("last_run_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  topics DiscoveredTopic[]
+
+  @@index([userId])
+  @@map("sources")
+}
+
+// ─── Discovered topics ────────────────────────────────────────────────────
+model DiscoveredTopic {
+  id               String   @id @default(uuid())
+  userId           String   @map("user_id")
+  sourceId         String?  @map("source_id")
+  title            String
+  summary          String
+  sourceName       String   @map("source_name")
+  sourceUrl        String?  @map("source_url")
+  originalLanguage String   @default("en") @map("original_language")
+  tags             String   @default("[]")
+  trendScore       Int      @default(0) @map("trend_score")
+  relevanceScore   Int      @default(0) @map("relevance_score")
+  viralityScore    Int      @default(0) @map("virality_score")
+  postIdea         String?  @map("post_idea")
+  status           String   @default("discovered") // discovered | approved | rejected | posts_generated
+  discoveredAt     DateTime @default(now()) @map("discovered_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  source Source?         @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  scores TopicScore[]
+  posts  GeneratedPost[]
+
+  // CRITICAL: prevents race-condition duplicate inserts under concurrent research runs.
+  @@unique([userId, title], map: "discovered_topics_user_id_title_key")
+  @@index([userId, status])
+  @@index([userId, trendScore])
+  @@map("discovered_topics")
+}
+
+// ─── Topic scoring history ────────────────────────────────────────────────
+model TopicScore {
+  id             String   @id @default(uuid())
+  topicId        String   @map("topic_id")
+  trendScore     Int      @map("trend_score")
+  relevanceScore Int      @map("relevance_score")
+  viralityScore  Int      @map("virality_score")
+  rationale      String?
+  scoredBy       String   @default("research-agent") @map("scored_by")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  topic DiscoveredTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@index([topicId])
+  @@map("topic_scores")
+}
+
+// ─── Generated posts ──────────────────────────────────────────────────────
+model GeneratedPost {
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  topicId        String?  @map("topic_id")
+  platform       String // facebook | instagram | linkedin
+  content        String
+  status         String   @default("draft") // draft | reviewing | reviewed | approved | scheduled | published | rejected
+  score          Int?
+  reviewNotes    String?  @map("review_notes")
+  approvedByUser Boolean  @default(false) @map("approved_by_user")
+  activeVersion  Int      @default(1) @map("active_version")
+  imageUrl       String?  @map("image_url")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  topic          DiscoveredTopic? @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  versions       PostVersion[]
+  assets         CreativeAsset[]
+  scheduled      ScheduledPost[]
+  publishingLogs PublishingLog[]
+  feedback       FeedbackEntry[]
+
+  @@index([userId, status])
+  @@index([userId, platform])
+  @@map("generated_posts")
+}
+
+// ─── Post versions (append-only history) ──────────────────────────────────
+model PostVersion {
+  id        String   @id @default(uuid())
+  postId    String   @map("post_id")
+  version   Int
+  content   String
+  source    String   @default("ai") // ai | rewrite | user_edit
+  note      String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  post GeneratedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, version])
+  @@index([postId])
+  @@map("post_versions")
+}
+
+// ─── Creative assets (images + videos) ────────────────────────────────────
+model CreativeAsset {
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  postId         String?  @map("related_post_id")
+  prompt         String
+  provider       String   @default("placeholder")
+  type           String   @default("image") // image | video
+  imageUrl       String?  @map("image_url")   // original CDN URL (Kie/FAL)
+  publicUrl      String?  @map("public_url")  // stable Supabase Storage URL — use this for publishing
+  status         String   @default("pending") // pending | generating | ready | failed
+  generationTime Int?     @map("generation_time")
+  meta           String   @default("{}")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  post GeneratedPost? @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([postId])
+  @@map("creative_assets")
+}
+
+// ─── Scheduled posts ──────────────────────────────────────────────────────
+model ScheduledPost {
+  id                  String   @id @default(uuid())
+  userId              String   @map("user_id")
+  postId              String   @map("post_id")
+  platform            String
+  scheduledAt         DateTime @map("scheduled_at")
+  timezone            String   @default("Asia/Jerusalem")
+  status              String   @default("scheduled") // scheduled | publishing | published | failed | canceled
+  blotatoSubmissionId String?  @map("blotato_submission_id")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  post GeneratedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  // CRITICAL: prevents the same post being scheduled to the same platform twice.
+  // Prisma upsert key is built from field names → use `postId_platform`, NOT
+  // the `map:` value below (which only renames the constraint in Postgres).
+  @@unique([postId, platform], map: "scheduled_posts_post_platform_key")
+  @@index([userId, status])
+  @@index([scheduledAt])
+  @@map("scheduled_posts")
+}
+
+// ─── Publishing logs ──────────────────────────────────────────────────────
+model PublishingLog {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  postId      String   @map("post_id")
+  platform    String
+  result      String // success | failed
+  attempt     Int      @default(1)
+  message     String?
+  externalUrl String?  @map("external_url")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  post GeneratedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([postId])
+  @@map("publishing_logs")
+}
+
+// ─── Feedback entries (drives the learning agent) ─────────────────────────
+model FeedbackEntry {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  postId     String?  @map("post_id")
+  type       String // edit | comment | reject | rewrite_request | like | dislike | approve
+  comment    String?
+  diffBefore String?  @map("diff_before")
+  diffAfter  String?  @map("diff_after")
+  meta       String   @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  post GeneratedPost? @relation(fields: [postId], references: [id], onDelete: SetNull)
+
+  @@index([userId, type])
+  @@index([postId])
+  @@map("feedback_entries")
+}
+
+// ─── AI learning memory (distilled style profile) ─────────────────────────
+model AiLearningMemory {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  version       Int      @default(1)
+  styleProfile  String   @map("style_profile")
+  summary       String?
+  feedbackCount Int      @default(0) @map("feedback_count")
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([userId, active])
+  @@map("ai_learning_memory")
+}
+
+// ─── Prompt templates (reserved — for future per-user overrides) ──────────
+model PromptTemplate {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  agent     String // research | content | creative | review | learning
+  name      String
+  template  String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId, agent])
+  @@map("prompt_templates")
+}
+
+// ─── Queue (jobs) ─────────────────────────────────────────────────────────
+model Job {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  type        String // research.discover | content.generate | content.rewrite | creative.generate | review.evaluate | publish.execute | learning.distill
+  agent       String
+  payload     String    @default("{}")
+  status      String    @default("pending") // pending | running | done | failed
+  priority    Int       @default(0)
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3) @map("max_attempts")
+  runAfter    DateTime  @default(now()) @map("run_after")
+  error       String?
+  result      String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  startedAt   DateTime? @map("started_at")
+  finishedAt  DateTime? @map("finished_at")
+
+  runs AgentRun[]
+
+  @@index([status, runAfter])
+  @@index([userId, type])
+  @@map("jobs")
+}
+
+// ─── Per-job execution log ────────────────────────────────────────────────
+model AgentRun {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  jobId        String?  @map("job_id")
+  agent        String
+  status       String // success | failed
+  durationMs   Int      @default(0) @map("duration_ms")
+  model        String?
+  inputTokens  Int      @default(0) @map("input_tokens")
+  outputTokens Int      @default(0) @map("output_tokens")
+  costUsd      Float    @default(0) @map("cost_usd")
+  summary      String?
+  prompt       String?
+  response     String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  job Job? @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@index([userId, agent])
+  @@index([jobId])
+  @@map("agent_runs")
+}
+
+// ─── Agent errors (for debugging) ─────────────────────────────────────────
+model AgentError {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  jobId     String?  @map("job_id")
+  agent     String
+  message   String
+  stack     String?
+  attempt   Int      @default(1)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId, agent])
+  @@map("agent_errors")
+}
+
+// ─── Settings (one row per user = always the single owner) ────────────────
+model Settings {
+  id                         String   @id @default(uuid())
+  userId                     String   @unique @map("user_id")
+  toneOfVoice                String   @default("") @map("tone_of_voice")
+  keywords                   String   @default("[]")
+  interests                  String   @default("[]")
+  defaultProvider            String   @default("placeholder") @map("default_provider")
+  falModel                   String?  @map("fal_model")
+  kieModel                   String?  @map("kie_model")
+  falVideoModel              String?  @map("fal_video_model")
+  kieVideoModel              String?  @map("kie_video_model")
+  postingPrefs               String   @default("{}") @map("posting_prefs")
+  facebookConnected          Boolean  @default(false) @map("facebook_connected")
+  instagramConnected         Boolean  @default(false) @map("instagram_connected")
+  blotatoFacebookAccountId   String?  @map("blotato_facebook_account_id")
+  blotatoFacebookPageId      String?  @map("blotato_facebook_page_id")
+  blotatoInstagramAccountId  String?  @map("blotato_instagram_account_id")
+  blotatoLinkedinAccountId   String?  @map("blotato_linkedin_account_id")
+  blotatoLinkedinPageId      String?  @map("blotato_linkedin_page_id")
+  autoDiscovery              Boolean  @default(true) @map("auto_discovery")
+  createdAt                  DateTime @default(now()) @map("created_at")
+  updatedAt                  DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
+}
