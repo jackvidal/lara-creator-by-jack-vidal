@@ -68,7 +68,8 @@ references/
 ├── 08-single-owner-auth.md              # scrypt + HMAC cookie + first-login setup
 ├── 09-railway-deployment.md             # Dockerfile + instrumentation + healthcheck + DNS
 ├── 10-gotchas-and-pitfalls.md           # 27+ real bugs with severity, symptom, fix
-└── 11-smoke-tests-and-verification.md   # 10 tests to verify the live system
+├── 11-smoke-tests-and-verification.md   # 10 tests to verify the live system
+└── 12-style-matching-agent.md           # (optional) upload reference videos/images so generated visuals stay in the owner's style
 assets/
 ├── env.example                          # exact env var template
 ├── prisma-schema.prisma                 # the full 16-model schema

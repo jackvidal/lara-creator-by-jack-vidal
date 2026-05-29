@@ -43,6 +43,7 @@ Work through these phases **in order**. Each one has a dedicated reference file 
 | 9 | Deploy to Railway with a Dockerfile, in-process queue worker via `src/instrumentation.ts`, `/api/health` for the probe, and Namecheap DNS cutover | `references/09-railway-deployment.md` |
 | 10 | The full gotchas list — read this **before** starting, then again whenever something breaks | `references/10-gotchas-and-pitfalls.md` |
 | 11 | Smoke tests to verify the live system works end-to-end | `references/11-smoke-tests-and-verification.md` |
+| 12 | (Optional) Style-matching agent — upload reference videos/images so generated visuals stay in the owner's style. Add this once the owner complains that the output is too generic. | `references/12-style-matching-agent.md` |
 
 ---
 
@@ -93,15 +94,18 @@ For everything else (UI language, font, color system) Hebrew + Heebo + the auror
 Don't reorder these. The original build hit pain at every step where the order was wrong.
 
 ```
-Phase 1  Project scaffold              → src/, package.json, tailwind, next.config.ts
-Phase 2  Supabase + Prisma schema      → 16 tables, RLS on, migrations applied
-Phase 3  Anthropic client + generate   → src/lib/ai/{client,generate}.ts
-Phase 4  Creative providers            → src/lib/creative/{providers,models}.ts
-Phase 5  Blotato (optional)            → src/lib/publishing/blotato.ts
-Phase 6  Agents + queue + dispatcher   → src/lib/{agents,queue}/* + 7 handlers
-Phase 7  Source adapters               → src/lib/agents/sources/* + RSS parser
-Phase 8  Auth + login flow             → src/lib/auth.ts + /login pages
-Phase 9  Railway deploy                → Dockerfile, instrumentation, /api/health, DNS
+Phase 1   Project scaffold              → src/, package.json, tailwind, next.config.ts
+Phase 2   Supabase + Prisma schema      → 16 tables, RLS on, migrations applied
+Phase 3   Anthropic client + generate   → src/lib/ai/{client,generate}.ts
+Phase 4   Creative providers            → src/lib/creative/{providers,models}.ts
+Phase 5   Blotato (optional)            → src/lib/publishing/blotato.ts
+Phase 6   Agents + queue + dispatcher   → src/lib/{agents,queue}/* + 7 handlers
+Phase 7   Source adapters               → src/lib/agents/sources/* + RSS parser
+Phase 8   Auth + login flow             → src/lib/auth.ts + /login pages
+Phase 9   Railway deploy                → Dockerfile, instrumentation, /api/health, DNS
+Phase 12  (Optional) Style matching     → StyleReference table + style.analyze agent +
+                                          image-first → animate for video. Add post-launch
+                                          when the owner says output is too generic.
 ```
 
 Verify each phase works locally before moving to the next:

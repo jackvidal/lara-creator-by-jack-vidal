@@ -315,6 +315,35 @@ model AgentError {
   @@map("agent_errors")
 }
 
+// ─── Style references (optional — Phase 12) ─────────────────────────────
+// Uploaded example videos/images that represent the owner's preferred visual style.
+// The creative agent uses these as image references for Nano Banana (image gen)
+// and as first_frame_url for Seedance image-to-video.
+//
+// For images: publicUrl == framePublicUrl (same file).
+// For videos: publicUrl is the .mp4, framePublicUrl is a first-frame PNG extracted
+// client-side via <canvas> at upload time. Avoids ffmpeg dep in Docker.
+//
+// Claude Opus 4.7 (vision) analyzes framePublicUrl and stores a structured profile
+// in visionAnalysis (palette, lighting, framing, composition, mood, motion).
+model StyleReference {
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  type            String // image | video
+  publicUrl       String   @map("public_url")
+  framePublicUrl  String   @map("frame_public_url")
+  label           String?
+  visionAnalysis  String   @default("{}") @map("vision_analysis")
+  analysisStatus  String   @default("pending") @map("analysis_status") // pending | analyzing | ready | failed
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([userId, active])
+  @@index([userId, createdAt])
+  @@map("style_references")
+}
+
 // ─── Settings (one row per user = always the single owner) ────────────────
 model Settings {
   id                         String   @id @default(uuid())
