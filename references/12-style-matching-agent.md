@@ -345,6 +345,7 @@ curl -s -o /dev/null -w "HTTP %{http_code}\n" \
 | 32 | Page doesn't reflect "ready" status until manual refresh | Add `export const dynamic = "force-dynamic"` to the page. Worker updates DB ~15s after upload; without `force-dynamic`, Next.js serves a stale render. |
 | 33 | Multimodal reference-to-video + first_frame_url sent together = Kie 400 | Per docs they're **mutually exclusive**. Prefer `first_frame_url` (image-first flow). See `KieProvider.buildInput` else-if pattern. |
 | 34 | FAL Seedance i2v 404 even with a valid `image_url` | You forgot to swap the model id from `text-to-video` to `image-to-video`. FAL splits them; Kie doesn't. See `FalProvider.generate` early model-swap. |
+| 35 | **Image uploads work, video uploads fail** with a generic "error" toast | Next.js Server Actions default body size limit is **1 MB**. Images are usually under that; videos never are. Add `experimental.serverActions.bodySizeLimit: "150mb"` to `next.config.ts`. (100MB video + ~5MB frame PNG fits comfortably.) The action throws "Body exceeded 1 MB limit" BEFORE `uploadStyleReferenceAction` even runs — so all the validation logic inside looks fine in code review. This applies to **any** phase that uploads via FormData (not just style-references). |
 
 ---
 

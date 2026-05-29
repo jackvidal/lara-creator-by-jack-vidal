@@ -13,6 +13,16 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: [{ protocol: "https", hostname: "**" }],
   },
+
+  // ⚠️ Default Server Action body size cap is 1MB. Any FormData upload
+  // larger than that (e.g. Phase 12 style-reference videos up to 100MB)
+  // throws "Body exceeded 1 MB limit" BEFORE your action code runs.
+  // Images typically work, videos always fail. See gotcha #35.
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "150mb",
+    },
+  },
 };
 
 export default nextConfig;
