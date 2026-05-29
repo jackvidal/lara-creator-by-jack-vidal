@@ -379,7 +379,78 @@ Run with: `npx tsx scripts/probe-sources.mjs`
 
 Healthy output: ~20-80 trends total with mix from at least 3 sources. If you see 0 trends from a source, that source is broken (URL changed, blocked, rate-limited). Fix it or comment it out.
 
-## 7.11 Retargeting to a different niche
+## 7.11 Freshness filter — mandatory
+
+YouTube channels post 5-15 videos in their Atom feed. Some are days old, some are months. **Without a date filter, the feed surfaces a 3-month-old "Google announces Nano Banana" clip as if it's news today.** The owner sees stale topics in their dashboard. They don't trust the system.
+
+**Pattern (cost: 1 field on RawTrend + 5 small adapter changes + 6 lines in aggregator):**
+
+Add to `RawTrend`:
+
+```ts
+export interface RawTrend {
+  // ...existing fields...
+  /** Unix epoch ms of publish time on the source. undefined when unknown. */
+  publishedAt?: number | null;
+}
+```
+
+In each adapter, extract the publish date:
+- **Hacker News:** `item.time * 1000` (HN gives epoch seconds)
+- **Reddit:** `p.created_utc * 1000` (also seconds)
+- **RSS 2.0:** `new Date(item.pubDate).getTime()` (RFC 822 string)
+- **Atom (YouTube, some blogs):** `new Date(entry.published ?? entry.updated).getTime()` (ISO 8601)
+
+In the aggregator (`sources/index.ts`):
+
+```ts
+const MAX_AGE_DAYS = 14;
+const MAX_AGE_MS = MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
+
+// after dedupe + block filter:
+const now = Date.now();
+const fresh = deduped.filter((t) => {
+  if (t.publishedAt == null) return true;  // unknown date — lenient
+  return now - t.publishedAt <= MAX_AGE_MS;
+});
+
+// Sort by recency — newest first; unknown to end.
+fresh.sort((a, b) => (b.publishedAt ?? 0) - (a.publishedAt ?? 0));
+```
+
+**14 days is the sweet spot.** Tighter (7 days) loses good content from slow-updating creators. Looser (30 days) lets a viral clip from last month re-leak.
+
+**Be lenient with unknown dates.** Some legitimate feeds (smaller blogs, niche RSS) don't include `pubDate`. Filtering them out means losing real signal; the cost of letting them through is small (Haiku still scores them).
+
+## 7.12 Strict relevance + no-invent rule for the Haiku scorer
+
+Two related failure modes the owner WILL hit eventually:
+
+**Failure A — relevance loophole.** "Israeli indie team uses AI to make a Turkish series" scored relevance 78 because the SYSTEM prompt allowed "creator success story" as 50-79. But that's a TV-series news story, not a new tool. The owner can't use it.
+
+**Fix:**
+- Bump `MIN_RELEVANCE` from 50 to 65 — the band 50-64 has been too noisy in practice.
+- Add explicit negative examples in SYSTEM prompt for "projects that USE AI but aren't a new tool":
+  - "Israeli team makes Turkish AI series"
+  - "Studio X produces movie with Runway"
+  - "Creator made viral AI music video"
+- Add a golden-rule litmus test at the end: *"Ask yourself: can the owner LEARN A NEW TOOL OR TECHNIQUE from this that they'll use THIS WEEK? If no → not 80+."*
+
+**Failure B — invented facts.** A Curious Refuge YouTube clip titled "Google's Nano Banana 2 image update" got translated as "Google משיקה Nano Banana — כלי וידאו AI חדש". Haiku invented two false claims: (1) it's video (it's image), (2) it's a new launch (it's an update).
+
+**Fix:** Add as **rule 0** at the top of the translation section:
+
+```
+0. 🚨 NEVER invent facts beyond the source.
+   If source says "image model" → don't translate as "video".
+   If source describes an update → don't write "new launch".
+   If source doesn't give a number → don't invent one.
+   When the source is vague, BE generic ("new update") rather than guess.
+```
+
+Include the exact bad example as a memorable anchor. Haiku reliably refers back to anchored examples.
+
+## 7.13 Retargeting to a different niche
 
 To repoint the system at, say, AI gaming instead of AI creative:
 
